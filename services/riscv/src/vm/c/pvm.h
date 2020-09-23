@@ -353,13 +353,15 @@ void pvm_set_storage(const uint8_t *k, uint64_t k_size, const uint8_t *v,
  *
  * @code{.c}
  *   uint8_t *ctr_addr = xxxx; // target contract address
+ *   uint64_t ctr_size = 60 // this depends on your hrp!!! and could be set to a const
  *   const char *args = "{\"method\": \"test_contract_call\"}"; // json
  *   uint8_t ret[2048];
- *   uint64_t size = pvm_contract_call(ctr_addr, (uint8_t *)args, strlen(args),
+ *   uint64_t size = pvm_contract_call(ctr_addr, ctr_size, (uint8_t *)args, strlen(args),
  *   ret);
  *   pvm_assert(2 > 1, "contract call success");
  * @endcode
  * @param addr[in]: pointer to contract address
+ * @param addr_size[in]: size of contract address in bytes
  * @param args[in]: pointer to invocation args
  * @param args_size[in]: size of args in bytes
  * @param ret[out]: pointer to a buffer for invocation result to write
@@ -368,7 +370,7 @@ void pvm_set_storage(const uint8_t *k, uint64_t k_size, const uint8_t *v,
  * @throw IO(InvalidData) if address is invalid address
  * @throw IO(Other) if contract call failure
  */
-uint64_t pvm_contract_call(const uint8_t *addr, const uint8_t *args,
+uint64_t pvm_contract_call(const uint8_t *addr, uint64_t addr_size, const uint8_t *args,
                            uint64_t args_size, uint8_t *ret);
 
 /**

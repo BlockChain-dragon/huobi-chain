@@ -27,6 +27,7 @@ use protocol::{
 };
 use serde::Serialize;
 
+use crate::types::{SetAdminEvent, SetAdminPayload};
 use std::{cell::RefCell, rc::Rc};
 
 const RISCV_ADMIN_KEY: &str = "riscv_admin";
@@ -77,7 +78,7 @@ where
     K: KycInterface + 'static,
     SDK: ServiceSDK + 'static,
 {
-    pub fn init(sdk: SDK, asset: AS, governance: G, kyc: K) -> Self {
+    pub fn new(sdk: SDK, asset: AS, governance: G, kyc: K) -> Self {
         let sdk = Rc::new(RefCell::new(sdk));
         let asset = Rc::new(RefCell::new(asset));
         let authorization = Authorization::new(&sdk);
@@ -114,6 +115,19 @@ where
         } else {
             ServiceError::CannotGetAdmin.into()
         }
+    }
+
+    #[write]
+    fn set_admin(&mut self, ctx: ServiceContext, payload: SetAdminPayload) -> ServiceResponse<()> {
+        require_admin!(self.sdk.borrow_mut(), &ctx);
+
+        self.sdk
+            .borrow_mut()
+            .set_value(RISCV_ADMIN_KEY.to_owned(), payload.admin.clone());
+        let event = SetAdminEvent {
+            admin: payload.admin,
+        };
+        Self::emit_event(&ctx, "SetAdmin".to_owned(), event)
     }
 
     #[read]

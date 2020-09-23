@@ -73,9 +73,9 @@ void pvm_set_storage(const uint8_t *k, uint64_t k_size, const uint8_t *v,
   syscall(SYSCODE_SET_STORAGE, k, k_size, v, v_size, 0, 0);
 }
 
-uint64_t pvm_contract_call(const uint8_t *addr, const uint8_t *args,
+uint64_t pvm_contract_call(const uint8_t *addr, uint64_t addr_size, const uint8_t *args,
                            uint64_t args_size, uint8_t *ret) {
-  return syscall(SYSCODE_CONTRACT_CALL, addr, args, args_size, ret, 0, 0);
+  return syscall(SYSCODE_CONTRACT_CALL, addr, addr_size, args, args_size, ret, 0);
 }
 
 uint64_t pvm_service_call(const char *service, const char *method,

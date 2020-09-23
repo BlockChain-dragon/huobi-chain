@@ -14,6 +14,7 @@ use crate::vm::syscall::convention::{
     SYSCODE_SERVICE_WRITE, SYSCODE_SET_STORAGE,
 };
 use crate::ChainInterface;
+use std::str::FromStr;
 
 pub struct SyscallChainInterface {
     chain:    Rc<RefCell<dyn ChainInterface>>,
@@ -87,9 +88,10 @@ impl<Mac: ckb_vm::SupportMachine> ckb_vm::Syscalls<Mac> for SyscallChainInterfac
                 machine.add_cycles(CONTRACT_CALL_FIXED_CYCLE)?;
 
                 let addr_ptr = machine.registers()[ckb_vm::registers::A0].to_u64();
-                let args_ptr = machine.registers()[ckb_vm::registers::A1].to_u64();
-                let args_len = machine.registers()[ckb_vm::registers::A2].to_u64();
-                let ret_ptr = machine.registers()[ckb_vm::registers::A3].to_u64();
+                let addr_len = machine.registers()[ckb_vm::registers::A1].to_u64();
+                let args_ptr = machine.registers()[ckb_vm::registers::A2].to_u64();
+                let args_len = machine.registers()[ckb_vm::registers::A3].to_u64();
+                let ret_ptr = machine.registers()[ckb_vm::registers::A4].to_u64();
 
                 if addr_ptr == 0 {
                     return Err(ckb_vm::Error::IO(io::ErrorKind::InvalidInput));
@@ -102,9 +104,9 @@ impl<Mac: ckb_vm::SupportMachine> ckb_vm::Syscalls<Mac> for SyscallChainInterfac
                 };
 
                 let address = {
-                    let hex = String::from_utf8(get_arr(machine, addr_ptr, 42)?)
+                    let bech32 = String::from_utf8(get_arr(machine, addr_ptr, addr_len)?)
                         .map_err(|_| IO(InvalidData))?;
-                    Address::from_hex(&hex).map_err(|_| IO(InvalidData))?
+                    Address::from_str(&bech32).map_err(|_| IO(InvalidData))?
                 };
 
                 let resp =

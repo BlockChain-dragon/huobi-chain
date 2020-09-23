@@ -23,8 +23,8 @@ uint64_t get_address(char *address) {
 }
 
 uint64_t do_write(char *contract_address, char *args) {
-    const char* service = "riscv";
-    const char* method = "exec";
+    const char *service = "riscv";
+    const char *method = "exec";
 
     char payload[1024];
     sprintf(payload, "{\"address\": \"%s\", \"args\": \"%s\"}", contract_address, args);
@@ -37,8 +37,8 @@ uint64_t do_write(char *contract_address, char *args) {
 }
 
 uint64_t do_read(char *contract_address, char *args) {
-    const char* service = "riscv";
-    const char* method = "call";
+    const char *service = "riscv";
+    const char *method = "call";
 
     char payload[1024];
     sprintf(payload, "{\"address\": \"%s\", \"args\": \"%s\"}", contract_address, args);
@@ -124,6 +124,7 @@ uint64_t c() {
 uint64_t e() {
     return write("w", false);
 }
+
 uint64_t f() {
     return read("e", true);
 }

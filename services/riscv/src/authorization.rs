@@ -13,7 +13,9 @@ pub enum Kind {
 
 pub struct Authorization {
     enabled:       Box<dyn StoreBool>,
+    // deployer address -> who approved the contract
     deploy_auth:   Box<dyn StoreMap<Address, Authorizer>>,
+    // contract addresses -> who approved the contract
     contract_auth: Box<dyn StoreMap<Address, Authorizer>>,
 }
 

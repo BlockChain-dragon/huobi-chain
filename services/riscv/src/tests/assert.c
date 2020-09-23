@@ -23,8 +23,8 @@ uint64_t a() {
 }
 
 uint64_t b(char *contract_address) {
-    const char* service = "riscv";
-    const char* method = "call";
+    const char *service = "riscv";
+    const char *method = "call";
 
     char payload[1024];
     sprintf(payload, "{\"address\": \"%s\", \"args\": \"a\"}", contract_address);

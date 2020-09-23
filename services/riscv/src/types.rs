@@ -208,3 +208,13 @@ pub struct InitGenesisPayload {
     pub deploy_auth:          Vec<Address>,
     pub admin:                Address,
 }
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct SetAdminPayload {
+    pub admin: Address,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct SetAdminEvent {
+    pub admin: Address,
+}

@@ -324,7 +324,7 @@ impl MockServiceMapping {
         let governance = Self::new_governance(factory)?;
         let kyc = Self::new_kyc(factory)?;
 
-        Ok(RiscvService::init(
+        Ok(RiscvService::new(
             factory.get_sdk("riscv")?,
             asset,
             governance,
