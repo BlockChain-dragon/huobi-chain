@@ -113,7 +113,9 @@ impl<SDK: ServiceSDK> TimestampService<SDK> {
             return ServiceResponse::from(ServiceError::NotOracleMode);
         };
 
-        self.set_time(payload.timestamp);
+        if !self.set_time(payload.timestamp) {
+            return ServiceResponse::from(ServiceError::FeedStaleTime);
+        }
         ServiceResponse::from_succeed(())
     }
 
@@ -177,7 +179,7 @@ impl<SDK: ServiceSDK> TimestampService<SDK> {
     pub fn set_timestamp_hook(&mut self, params: &ExecutorParams) {
         if let Some(info) = self.sdk.get_value::<_, TimestampInfo>(&INFO_KEY.to_owned()) {
             if !info.oracle {
-                self.set_time(params.timestamp)
+                self.set_time(params.timestamp);
             }
         } else {
             log::error!("timestamp service, set_timestamp_hook doesn't find TimestampInfo?")
@@ -191,10 +193,12 @@ impl<SDK: ServiceSDK> TimestampService<SDK> {
             .map_or(false, |info| info.admin == ctx.get_caller())
     }
 
-    fn set_time(&mut self, time: u64) {
+    fn set_time(&mut self, time: u64) -> bool {
         if time > self.time.get() {
-            self.time.set(time)
-        }
+            self.time.set(time);
+            return true;
+        };
+        false
     }
 
     fn emit_event<T: Serialize>(
@@ -260,6 +264,8 @@ pub enum ServiceError {
     MissingInfo,
     #[display(fmt = "Parsing payload to json failed {:?}", _0)]
     JsonParse(serde_json::Error),
+    #[display(fmt = "Feed time reject stale time")]
+    FeedStaleTime,
 }
 
 impl ServiceError {
@@ -269,6 +275,7 @@ impl ServiceError {
             ServiceError::NotAuthorized => 102,
             ServiceError::MissingInfo => 103,
             ServiceError::JsonParse(_) => 104,
+            ServiceError::FeedStaleTime => 105,
         }
     }
 }

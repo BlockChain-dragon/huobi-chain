@@ -67,10 +67,6 @@ impl InitGenesisPayload {
             return Err(ServiceError::MeaningLessValue("admin".to_string()));
         }
 
-        if self.supply == 0 {
-            return Err(ServiceError::MeaningLessValue("supply".to_string()));
-        }
-
         let mint_balance = verify_issuers(&self.init_mints)?;
         if mint_balance != self.supply {
             return Err(ServiceError::MintNotEqualSupply);
@@ -95,10 +91,6 @@ impl CreateAssetPayload {
     pub fn verify(&self) -> Result<(), ServiceError> {
         verify_asset_name(&self.name)?;
         verify_asset_symbol(&self.symbol)?;
-
-        if self.supply == 0 {
-            return Err(ServiceError::MeaningLessValue("supply".to_string()));
-        }
 
         let mint_balance = verify_issuers(&self.init_mints)?;
         if mint_balance != self.supply {
