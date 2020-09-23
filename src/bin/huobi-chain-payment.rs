@@ -196,8 +196,10 @@ fn main() {
     muta::run(
         DefaultServiceMapping {},
         "Huobi-chain",
-        "v0.5.0",
+        "v0.6.0",
         "Muta Dev <muta@nervos.org>",
+        "./config/transfer_quota/chain.toml",
+        "./config/transfer_quota/genesis.toml",
         None,
     )
 }

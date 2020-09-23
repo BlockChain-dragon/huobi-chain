@@ -1,3 +1,6 @@
+#![allow(clippy::unnecessary_lazy_evaluations)]
+#![allow(clippy::needless_collect)]
+
 #[cfg(test)]
 mod tests;
 pub mod types;

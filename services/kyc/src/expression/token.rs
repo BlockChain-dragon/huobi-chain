@@ -44,27 +44,15 @@ impl Token {
     }
 
     pub fn must_have_left(&self) -> bool {
-        match self {
-            Token::Has | Token::Dot | Token::And | Token::Or => true,
-            _ => false,
-        }
+        matches!(self, Token::Has | Token::Dot | Token::And | Token::Or)
     }
 
     pub fn must_have_right(&self) -> bool {
-        match self {
-            Token::Has | Token::Dot | Token::And | Token::Or | Token::Not => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Token::Has | Token::Dot | Token::And | Token::Or | Token::Not
+        )
     }
-
-    // true for left
-    // pub fn get_associativity(&self) -> bool {
-    //     match self {
-    //         Token::Dot | Token::Has | Token::And | Token::Or => true,
-    //         Token::Not => false,
-    //         _ => unreachable!(),
-    //     }
-    // }
 
     // 1 for left, 2 for right, 0 for error
     pub fn get_associativity_by_priority(priority: u8) -> u8 {
