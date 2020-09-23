@@ -14,7 +14,7 @@ use protocol::types::{Address, Bytes, Hash, ServiceContext, ServiceContextParams
 
 use kyc::{
     types::{
-        FixedTagList, Genesis as KYC_Genesis, GetUserTags, OrgName, TagName, TagString,
+        FixedTagList, Genesis as KYC_Genesis, GetUserTags, OrgName, TagName, TagValue,
         UpdateUserTags,
     },
     KycService,
@@ -565,7 +565,7 @@ impl TransferQuotaServiceCollection {
         let mut tags: HashMap<TagName, FixedTagList> = HashMap::new();
         tags.insert(
             TagName::from_str("level").unwrap(),
-            FixedTagList::from_vec(vec![TagString::from_str(level).unwrap()]).unwrap(),
+            FixedTagList::validate_new_tag_value(vec![TagValue::from_str(level).unwrap()]).unwrap(),
         );
         let use_tags = UpdateUserTags {
             org_name: OrgName::from_str("Huobi").unwrap(),

@@ -1,8 +1,8 @@
 use crate::{
     types::{
         ChangeOrgAdmin, ChangeOrgApproved, ChangeServiceAdmin, EvalUserTagExpression, FixedTagList,
-        Genesis, GetUserTags, NewOrgEvent, OrgName, RegisterNewOrg, TagName, UpdateUserTags,
-        Validate,
+        Genesis, GetUserTags, NewOrgEvent, OrgName, RegisterNewOrg, TagName, TagValue,
+        UpdateUserTags, Validate,
     },
     ExpressionDataFeed, KycService, ServiceError, UpdateOrgSupportTags,
 };
@@ -15,7 +15,6 @@ use framework::binding::{
 };
 use protocol::types::{Address, ServiceContext, ServiceContextParams};
 
-use crate::types::TagString;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -55,6 +54,139 @@ const CYCLE_LIMIT: u64 = 1024 * 1024 * 1024;
 const SERVICE_ADMIN: &str = "0x755cdba6ae4f479f7164792b318b2a06c759833b";
 const LI_BING: &str = "0xcff1002107105460941f797828f468667aa1a2db";
 const CHEN_TEN: &str = "0x0000000000000000000000000000000000000001";
+
+#[test]
+#[should_panic]
+fn should_reject_invalid_org_name() {
+    serde_json::from_str::<OrgName>(r#""1234A""#).unwrap();
+}
+
+#[test]
+fn should_accept_org_name() {
+    let org_name = serde_json::from_str::<OrgName>(r#""B1234A""#).unwrap();
+    assert_eq!(org_name.0.as_str(), r#"B1234A"#)
+}
+
+#[test]
+#[should_panic]
+fn should_reject_invalid_tag_name() {
+    serde_json::from_str::<TagName>(r#""1234A""#).unwrap();
+}
+
+#[test]
+fn should_accept_tag_name() {
+    let tag_name = serde_json::from_str::<TagName>(r#""B1234A""#).unwrap();
+    assert_eq!(tag_name.0.as_str(), r#"B1234A"#)
+}
+
+#[test]
+#[should_panic]
+fn should_reject_invalid_tag_value() {
+    serde_json::from_str::<TagValue>(r#""1234A""#).unwrap();
+}
+
+#[test]
+fn should_accept_tag_value() {
+    let tag_value = serde_json::from_str::<TagValue>(r#""B1234A""#).unwrap();
+    assert_eq!(tag_value.0.as_str(), r#"B1234A"#)
+}
+
+#[test]
+#[should_panic]
+fn should_reject_invalid_tag_values() {
+    serde_json::from_str::<FixedTagList>(r#"["1234A"]"#).unwrap();
+}
+
+#[test]
+fn should_accept_tag_values() {
+    let tag_values = serde_json::from_str::<FixedTagList>(r#"["B1234A"]"#).unwrap();
+    let into: Vec<String> = tag_values.into();
+    assert_eq!(into.get(0).unwrap().as_str(), r#"B1234A"#);
+}
+
+#[test]
+#[should_panic]
+fn should_reject_empty_tag_values() {
+    serde_json::from_str::<FixedTagList>(r#"[]"#).unwrap();
+}
+
+#[test]
+#[should_panic]
+fn should_reject_wrong_tag_values_number() {
+    // number is not allowed in TagValue(TagValue only parses serde-string)
+    serde_json::from_str::<FixedTagList>(r#"[1234]"#).unwrap();
+}
+
+#[test]
+#[should_panic]
+fn should_reject_wrong_tag_values_invalid_format() {
+    // number is not allowed in TagValue(TagValue rejects wrong format)
+    serde_json::from_str::<FixedTagList>(r#"["1234"]"#).unwrap();
+}
+
+#[test]
+fn should_accept_update_user_tags() {
+    let payload = serde_json::from_str::<UpdateUserTags>(
+        r#"
+    {
+       "org_name":"A123",
+       "user":"muta1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqggfy0d",
+       "tags":{
+          "Tag1":[
+             "A13",
+             "B4_"
+          ]
+       }
+    }
+    "#,
+    )
+    .unwrap();
+    assert_eq!(payload.org_name.0, "A123");
+    assert!(payload.tags.get(&"Tag1".parse().unwrap()).is_some());
+    assert_eq!(
+        payload
+            .tags
+            .get(&"Tag1".parse().unwrap())
+            .unwrap()
+            .0
+            .get(0)
+            .unwrap()
+            .0,
+        "A13"
+    );
+    assert_eq!(
+        payload
+            .tags
+            .get(&"Tag1".parse().unwrap())
+            .unwrap()
+            .0
+            .get(1)
+            .unwrap()
+            .0,
+        "B4_"
+    );
+}
+
+#[test]
+#[should_panic]
+fn should_reject_update_user_tags_invalid() {
+    // the 13 is invalid
+    serde_json::from_str::<UpdateUserTags>(
+        r#"
+    {
+       "org_name":"A123",
+       "user":"muta1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqggfy0d",
+       "tags":{
+          "Tag1":[
+             "13",
+             "B4_"
+          ]
+       }
+    }
+    "#,
+    )
+    .unwrap();
+}
 
 #[test]
 fn should_correctly_init_genesis() {
@@ -389,15 +521,18 @@ fn should_update_user_tags() {
     let mut tags: HashMap<TagName, FixedTagList> = HashMap::new();
     tags.insert(
         "title".parse().unwrap(),
-        FixedTagList::from_vec(vec!["ZaYi".parse().unwrap()]).expect("fixed tag list"),
+        FixedTagList::validate_new_tag_value(vec!["ZaYi".parse().unwrap()])
+            .expect("fixed tag list"),
     );
     tags.insert(
         "speci".parse().unwrap(),
-        FixedTagList::from_vec(vec!["Human".parse().unwrap()]).expect("fixed tag list"),
+        FixedTagList::validate_new_tag_value(vec!["Human".parse().unwrap()])
+            .expect("fixed tag list"),
     );
     tags.insert(
         "skills".parse().unwrap(),
-        FixedTagList::from_vec(vec!["Guan1".parse().unwrap()]).expect("fixed tag list"),
+        FixedTagList::validate_new_tag_value(vec!["Guan1".parse().unwrap()])
+            .expect("fixed tag list"),
     );
 
     let update_user_tags = UpdateUserTags {
@@ -433,7 +568,8 @@ fn should_not_update_user_tags() {
     let mut tags: HashMap<TagName, FixedTagList> = HashMap::new();
     tags.insert(
         "bad".parse().unwrap(),
-        FixedTagList::from_vec(vec!["Zeroq".parse().unwrap()]).expect("fixed tag list"),
+        FixedTagList::validate_new_tag_value(vec!["Zeroq".parse().unwrap()])
+            .expect("fixed tag list"),
     );
 
     let update_user_tags = UpdateUserTags {
@@ -452,7 +588,8 @@ fn should_reject_update_user_tags_using_invalid_tag_name() {
     let mut tags: HashMap<TagName, FixedTagList> = HashMap::new();
     tags.insert(
         "title_is_more_than_32_length_xxxxxxx".parse().unwrap(),
-        FixedTagList::from_vec(vec!["ZaYi".parse().unwrap()]).expect("fixed tag list"),
+        FixedTagList::validate_new_tag_value(vec!["ZaYi".parse().unwrap()])
+            .expect("fixed tag list"),
     );
 }
 #[test]
@@ -461,7 +598,7 @@ fn should_reject_update_user_tags_using_invalid_tag_value() {
     let mut tags: HashMap<TagName, FixedTagList> = HashMap::new();
     tags.insert(
         "title".parse().unwrap(),
-        FixedTagList::from_vec(vec!["value_is_more_than_32_length_xxxxxxx"
+        FixedTagList::validate_new_tag_value(vec!["value_is_more_than_32_length_xxxxxxx"
             .parse()
             .unwrap()])
         .expect("fixed tag list"),
@@ -472,13 +609,13 @@ fn should_reject_update_user_tags_using_invalid_tag_value() {
 #[should_panic]
 fn should_reject_update_user_tags_using_invalid_value_capacity() {
     let mut tags: HashMap<TagName, FixedTagList> = HashMap::new();
-    let mut values = Vec::<TagString>::new();
+    let mut values = Vec::<TagValue>::new();
     for i in 0..17 {
         values.push(("value".to_owned() + &(i.to_string())).parse().unwrap())
     }
     tags.insert(
         "title".parse().unwrap(),
-        FixedTagList::from_vec(values).expect("fixed tag list"),
+        FixedTagList::validate_new_tag_value(values).expect("fixed tag list"),
     );
 }
 
@@ -491,7 +628,8 @@ fn should_remove_unused_previous_user_tags_after_update_user_tags() {
     let mut tags: HashMap<TagName, FixedTagList> = HashMap::new();
     tags.insert(
         "title".parse().unwrap(),
-        FixedTagList::from_vec(vec!["ZaYi".parse().unwrap()]).expect("fixed tag list"),
+        FixedTagList::validate_new_tag_value(vec!["ZaYi".parse().unwrap()])
+            .expect("fixed tag list"),
     );
 
     service_call!(kyc, update_user_tags, ctx.clone(), UpdateUserTags {
@@ -509,7 +647,8 @@ fn should_remove_unused_previous_user_tags_after_update_user_tags() {
     tags.clear();
     tags.insert(
         "skills".parse().unwrap(),
-        FixedTagList::from_vec(vec!["Guan1".parse().unwrap()]).expect("fixed tag list"),
+        FixedTagList::validate_new_tag_value(vec!["Guan1".parse().unwrap()])
+            .expect("fixed tag list"),
     );
 
     // title isn't included, so will be removed.
@@ -593,7 +732,8 @@ fn should_reject_update_user_tags_from_none_org_admin() {
     let mut tags: HashMap<TagName, FixedTagList> = HashMap::new();
     tags.insert(
         "title".parse().unwrap(),
-        FixedTagList::from_vec(vec!["ZaYi".parse().unwrap()]).expect("fixed tag list"),
+        FixedTagList::validate_new_tag_value(vec!["ZaYi".parse().unwrap()])
+            .expect("fixed tag list"),
     );
 
     let updated = kyc.update_user_tags(ctx, UpdateUserTags {
@@ -700,15 +840,18 @@ fn should_eval_user_tag_expression() {
     let mut tags: HashMap<TagName, FixedTagList> = HashMap::new();
     tags.insert(
         "title".parse().unwrap(),
-        FixedTagList::from_vec(vec!["ZaYi".parse().unwrap()]).expect("fixed tag list"),
+        FixedTagList::validate_new_tag_value(vec!["ZaYi".parse().unwrap()])
+            .expect("fixed tag list"),
     );
     tags.insert(
         "speci".parse().unwrap(),
-        FixedTagList::from_vec(vec!["Human".parse().unwrap()]).expect("fixed tag list"),
+        FixedTagList::validate_new_tag_value(vec!["Human".parse().unwrap()])
+            .expect("fixed tag list"),
     );
     tags.insert(
         "skills".parse().unwrap(),
-        FixedTagList::from_vec(vec!["Guan1".parse().unwrap()]).expect("fixed tag list"),
+        FixedTagList::validate_new_tag_value(vec!["Guan1".parse().unwrap()])
+            .expect("fixed tag list"),
     );
 
     let update_user_tags = UpdateUserTags {

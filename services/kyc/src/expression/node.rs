@@ -9,7 +9,7 @@ pub struct ParseError(&'static str);
 
 impl From<ParseError> for ExpressionError {
     fn from(err: ParseError) -> ExpressionError {
-        ExpressionError::ParseError(err.0.to_owned())
+        ExpressionError::Parse(err.0)
     }
 }
 

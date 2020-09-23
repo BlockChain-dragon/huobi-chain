@@ -84,7 +84,7 @@ pub fn scan(input: String) -> Result<Vec<Token>, ExpressionError> {
     position.push(0);
     for (i, c) in input.chars().enumerate() {
         if !c.is_ascii() {
-            return Err(ExpressionError::ScanError("not ascii".to_string()));
+            return Err(ExpressionError::Scan("not ascii"));
         }
 
         match c {
@@ -106,7 +106,7 @@ pub fn scan(input: String) -> Result<Vec<Token>, ExpressionError> {
     position.push(input.chars().count());
 
     if acute {
-        return Err(ExpressionError::ScanError("unclosed acute".to_string()));
+        return Err(ExpressionError::Scan("unclosed acute"));
     }
 
     let mut start: usize;
@@ -143,9 +143,7 @@ pub fn scan(input: String) -> Result<Vec<Token>, ExpressionError> {
 
         if logic_and {
             if token_str != "&" {
-                return Err(ExpressionError::ScanError(
-                    "single logic_and operator".to_string(),
-                ));
+                return Err(ExpressionError::Scan("single logic_and operator"));
             }
             logic_and = false;
             continue;
@@ -153,9 +151,7 @@ pub fn scan(input: String) -> Result<Vec<Token>, ExpressionError> {
 
         if logic_or {
             if token_str != "|" {
-                return Err(ExpressionError::ScanError(
-                    "single logic_or operator".to_string(),
-                ));
+                return Err(ExpressionError::Scan("single logic_or operator"));
             }
             logic_or = false;
             continue;
@@ -224,9 +220,8 @@ pub fn scan(input: String) -> Result<Vec<Token>, ExpressionError> {
     }
 
     if acute || logic_or || logic_and || parenthesis != 0 {
-        return Err(ExpressionError::ScanError(
-            "single logic_or, or single logic_and, or unclosing acute, or unclosing parenthesis"
-                .to_string(),
+        return Err(ExpressionError::Scan(
+            "single logic_or, or single logic_and, or unclosing acute, or unclosing parenthesis",
         ));
     }
 

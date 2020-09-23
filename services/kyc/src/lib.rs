@@ -21,12 +21,13 @@ use protocol::{
     Bytes, ProtocolResult,
 };
 
+use crate::types::{Validate, ValidateBase};
 use error::ServiceError;
 use expression::traits::ExpressionDataFeed;
 pub use types::{
     ChangeOrgAdmin, ChangeOrgApproved, ChangeServiceAdmin, EvalUserTagExpression, FixedTagList,
-    Genesis, GetUserTags, KycOrgInfo, NewOrgEvent, OrgName, RegisterNewOrg, TagName,
-    UpdateOrgSupportTags, UpdateUserTags, Validate,
+    Genesis, GetUserTags, KycOrgInfo, NewOrgEvent, OrgName, RegisterNewOrg, TagName, TagValue,
+    UpdateOrgSupportTags, UpdateUserTags,
 };
 
 const KYC_SERVICE_ADMIN_KEY: &str = "kyc_service_admin";
@@ -609,8 +610,10 @@ impl<SDK: ServiceSDK> ExpressionDataFeed for KycService<SDK> {
         kyc: String,
         tag: String,
     ) -> Result<Vec<String>, &'static str> {
-        let org_name = kyc.parse()?;
-        let tag_name = tag.parse()?;
+        let org_name = OrgName::new(kyc);
+        org_name.validate().map_err(|e| e.as_str())?;
+        let tag_name = TagName::new(tag);
+        tag_name.validate().map_err(|e| e.as_str())?;
 
         if !self.orgs.get(&org_name).unwrap().approved {
             return Err("unapproved org");

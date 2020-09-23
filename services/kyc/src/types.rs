@@ -10,17 +10,26 @@ use protocol::{
 use serde::de::{Deserializer, Error, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
 
+use crate::expression::{
+    validate_org_name, validate_tag_name, validate_tag_value, validate_tag_values_update,
+    ExpressionError,
+};
+use std::str::FromStr;
 use std::{
     collections::HashMap,
     fmt,
     ops::{Deref, DerefMut},
-    str::FromStr,
 };
 
-const TAG_NAME_VALUE_LENGTH: usize = 32usize;
-const ORG_NAME_LENGTH: usize = 32usize;
-const TAG_VALUE_CAPACITY: usize = 16usize;
 const ORG_DESCRIPTION_LENGTH: usize = 256usize;
+
+pub trait Validate {
+    fn validate(&self) -> Result<(), ServiceError>;
+}
+
+pub trait ValidateBase {
+    fn validate(&self) -> Result<(), ExpressionError>;
+}
 
 #[derive(Debug, From, Display)]
 #[display(fmt = "{}", _0)]
@@ -32,71 +41,51 @@ impl From<BadPayload> for ServiceError {
     }
 }
 
-pub trait Validate {
-    fn validate(&self) -> Result<(), ServiceError>;
-}
-
-pub trait Validated {}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Display)]
 #[display(fmt = "{}", _0)]
-pub struct TagString(String);
+pub struct TagName(pub String);
 
-// No way to create invalid TagString from public fn
-impl Validated for TagString {}
+impl TagName {
+    pub fn new(s: String) -> Self {
+        TagName(s)
+    }
+}
 
-impl TagString {
-    pub fn validate(s: &str) -> Result<(), &'static str> {
-        if s.chars().count() > TAG_NAME_VALUE_LENGTH {
-            return Err("tag length exceed");
-        }
+impl FromStr for TagName {
+    type Err = ServiceError;
 
-        // 'NULL' is reversed keyword, make sure that a tag array doesn't
-        // contain it.
-        if s.chars().count() == 4 && s.to_uppercase() == "NULL" {
-            return Err("tag null is not allowed");
-        }
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let tag_name = TagName::new(s.to_owned());
+        tag_name.validate().map_err(ServiceError::from)?;
+        Ok(tag_name)
+    }
+}
 
-        for (i, c) in s.chars().enumerate() {
-            if i == 0 && !c.is_ascii_alphanumeric() {
-                return Err("tag must start with alpha latter");
-            }
-
-            if !c.is_ascii_alphanumeric() && c != '_' {
-                return Err("tag only support ascii alpha, number, underscore");
-            }
-        }
-
+impl ValidateBase for TagName {
+    fn validate(&self) -> Result<(), ExpressionError> {
+        validate_tag_name(self.0.clone())?;
         Ok(())
     }
 }
 
-impl FromStr for TagString {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::validate(s)?;
-
-        Ok(TagString(s.to_owned()))
-    }
-}
-
-impl rlp::Encodable for TagString {
+impl rlp::Encodable for TagName {
     fn rlp_append(&self, s: &mut rlp::RlpStream) {
         self.0.rlp_append(s)
     }
 }
 
-impl rlp::Decodable for TagString {
+impl rlp::Decodable for TagName {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
         let name = String::decode(rlp)?;
-        TagString::validate(&name).map_err(rlp::DecoderError::Custom)?;
+        let ret = TagName::new(name);
+        ret.validate()
+            .map_err(|e| rlp::DecoderError::Custom(e.as_str()))?;
 
-        Ok(TagString(name))
+        Ok(ret)
     }
 }
 
-impl FixedCodec for TagString {
+impl FixedCodec for TagName {
     fn encode_fixed(&self) -> ProtocolResult<Bytes> {
         Ok(rlp::encode(self).into())
     }
@@ -106,7 +95,7 @@ impl FixedCodec for TagString {
     }
 }
 
-impl<'de> Deserialize<'de> for TagString {
+impl<'de> Deserialize<'de> for TagName {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -114,17 +103,19 @@ impl<'de> Deserialize<'de> for TagString {
         struct StringVisitor;
 
         impl<'de> Visitor<'de> for StringVisitor {
-            type Value = TagString;
+            type Value = TagName;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("tag string")
+                formatter.write_str("tag name serializing fails")
             }
 
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                v.parse().map_err(E::custom)
+                let ret = TagName::new(v.to_string());
+                ret.validate().map_err(serde::de::Error::custom)?;
+                Ok(ret)
             }
         }
 
@@ -132,7 +123,7 @@ impl<'de> Deserialize<'de> for TagString {
     }
 }
 
-impl Deref for TagString {
+impl Deref for TagName {
     type Target = String;
 
     fn deref(&self) -> &Self::Target {
@@ -140,144 +131,147 @@ impl Deref for TagString {
     }
 }
 
-impl DerefMut for TagString {
+impl DerefMut for TagName {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl Into<String> for TagString {
+impl Into<String> for TagName {
     fn into(self) -> String {
         self.0
     }
 }
 
-pub type TagName = TagString;
+//===========================
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Display)]
+#[display(fmt = "{}", _0)]
+pub struct TagValue(pub String);
 
-#[derive(Debug, Serialize, PartialEq, Eq, Clone)]
-#[serde(deny_unknown_fields)]
-pub struct NoneEmptyVec<T: Validated>(Vec<T>);
-
-impl<T: Validated> Into<Vec<T>> for NoneEmptyVec<T> {
-    fn into(self) -> Vec<T> {
-        self.0
+impl TagValue {
+    pub fn new(s: String) -> Self {
+        TagValue(s)
     }
 }
 
-impl<T: Validated> IntoIterator for NoneEmptyVec<T> {
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-    type Item = T;
+impl FromStr for TagValue {
+    type Err = ServiceError;
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let tag_value = TagValue::new(s.to_owned());
+        tag_value.validate().map_err(ServiceError::from)?;
+        Ok(tag_value)
     }
 }
 
-impl<T: Validated> Deref for NoneEmptyVec<T> {
-    type Target = Vec<T>;
+impl ValidateBase for TagValue {
+    fn validate(&self) -> Result<(), ExpressionError> {
+        validate_tag_value(self.0.clone())?;
+        Ok(())
+    }
+}
+
+impl rlp::Encodable for TagValue {
+    fn rlp_append(&self, s: &mut rlp::RlpStream) {
+        self.0.rlp_append(s)
+    }
+}
+
+impl rlp::Decodable for TagValue {
+    fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
+        let name = String::decode(rlp)?;
+        let ret = TagValue::new(name);
+        ret.validate()
+            .map_err(|e| rlp::DecoderError::Custom(e.as_str()))?;
+
+        Ok(ret)
+    }
+}
+
+impl FixedCodec for TagValue {
+    fn encode_fixed(&self) -> ProtocolResult<Bytes> {
+        Ok(rlp::encode(self).into())
+    }
+
+    fn decode_fixed(bytes: Bytes) -> ProtocolResult<Self> {
+        Ok(rlp::decode(&bytes).map_err(FixedCodecError::from)?)
+    }
+}
+
+impl<'de> Deserialize<'de> for TagValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct StringVisitor;
+
+        impl<'de> Visitor<'de> for StringVisitor {
+            type Value = TagValue;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("tag value serializing fails")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let ret = TagValue::new(v.to_string());
+                ret.validate().map_err(serde::de::Error::custom)?;
+                Ok(ret)
+            }
+        }
+
+        deserializer.deserialize_str(StringVisitor)
+    }
+}
+
+impl Deref for TagValue {
+    type Target = String;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<T: Validated> DerefMut for NoneEmptyVec<T> {
+impl DerefMut for TagValue {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl NoneEmptyVec<TagString> {
-    pub fn validate(tags: &[TagString]) -> Result<(), &'static str> {
-        if tags.is_empty() {
-            return Err("tag array is empty");
-        }
-
-        Ok(())
+impl Into<String> for TagValue {
+    fn into(self) -> String {
+        self.0
     }
 }
 
-impl FixedCodec for NoneEmptyVec<TagString> {
-    fn encode_fixed(&self) -> ProtocolResult<Bytes> {
-        Ok(rlp::encode_list(self).into())
-    }
-
-    fn decode_fixed(bytes: Bytes) -> ProtocolResult<Self> {
-        let rlp = rlp::Rlp::new(&bytes);
-        let tags = rlp.as_list().map_err(FixedCodecError::from)?;
-
-        NoneEmptyVec::validate(&tags)
-            .map_err(rlp::DecoderError::Custom)
-            .map_err(FixedCodecError::from)?;
-
-        Ok(NoneEmptyVec(tags))
-    }
-}
-
-impl<'de> Deserialize<'de> for NoneEmptyVec<TagString> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct TagVisitor;
-
-        impl<'de> Visitor<'de> for TagVisitor {
-            type Value = NoneEmptyVec<TagString>;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("tag array")
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: SeqAccess<'de>,
-            {
-                let mut vec = Vec::new();
-
-                while let Some(elem) = seq.next_element::<Option<TagString>>()? {
-                    vec.extend(elem);
-                }
-
-                NoneEmptyVec::validate(&vec).map_err(A::Error::custom)?;
-                Ok(NoneEmptyVec(vec))
-            }
-        }
-
-        deserializer.deserialize_seq(TagVisitor)
-    }
-}
+//===========================
 
 #[derive(Debug, Serialize, PartialEq, Eq, Hash, Clone, Display)]
 #[display(fmt = "{}", _0)]
-pub struct OrgName(String);
+pub struct OrgName(pub String);
 
 impl OrgName {
-    pub fn validate(s: &str) -> Result<(), &'static str> {
-        if s.chars().count() > ORG_NAME_LENGTH {
-            return Err("org name exceed");
-        }
-
-        for (i, c) in s.chars().enumerate() {
-            if i == 0 && !c.is_ascii_alphanumeric() {
-                return Err("org name must start with alpha latter");
-            }
-
-            if !c.is_ascii_alphanumeric() && c != '_' {
-                return Err("org name only support ascii alpha, number, underscore");
-            }
-        }
-
-        Ok(())
+    pub fn new(s: String) -> Self {
+        OrgName(s)
     }
 }
 
 impl FromStr for OrgName {
-    type Err = &'static str;
+    type Err = ServiceError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::validate(s)?;
+        let org_name = OrgName::new(s.to_owned());
+        org_name.validate().map_err(ServiceError::from)?;
+        Ok(org_name)
+    }
+}
 
-        Ok(OrgName(s.to_owned()))
+impl ValidateBase for OrgName {
+    fn validate(&self) -> Result<(), ExpressionError> {
+        validate_org_name(self.0.clone())?;
+        Ok(())
     }
 }
 
@@ -290,9 +284,11 @@ impl rlp::Encodable for OrgName {
 impl rlp::Decodable for OrgName {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
         let name = String::decode(rlp)?;
-        OrgName::validate(&name).map_err(rlp::DecoderError::Custom)?;
+        let ret = OrgName::new(name);
+        ret.validate()
+            .map_err(|e| rlp::DecoderError::Custom(e.as_str()))?;
 
-        Ok(OrgName(name))
+        Ok(ret)
     }
 }
 
@@ -331,20 +327,24 @@ impl<'de> Deserialize<'de> for OrgName {
             type Value = OrgName;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("tag string")
+                formatter.write_str("org name serializing fails")
             }
 
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                v.parse().map_err(E::custom)
+                let ret = OrgName::new(v.to_string());
+                ret.validate().map_err(serde::de::Error::custom)?;
+                Ok(ret)
             }
         }
 
         deserializer.deserialize_str(StringVisitor)
     }
 }
+
+//===========================
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Genesis {
@@ -399,72 +399,36 @@ impl Validate for KycOrgInfo {
 }
 
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
-pub struct FixedTagList(NoneEmptyVec<TagString>);
+pub struct FixedTagList(pub Vec<TagValue>);
 
 impl FixedTagList {
-    pub fn from_vec(tags: Vec<TagString>) -> Result<Self, &'static str> {
-        Self::validate(&tags)?;
-
-        Ok(FixedTagList(NoneEmptyVec(tags)))
+    pub fn new(values: Vec<String>) -> Self {
+        let tag_values = values.into_iter().map(TagValue::new).collect::<Vec<_>>();
+        FixedTagList(tag_values)
     }
 
-    pub fn validate(tags: &[TagString]) -> Result<(), &'static str> {
-        NoneEmptyVec::validate(tags)?;
+    pub fn validate_new(values: Vec<String>) -> Result<Self, ServiceError> {
+        let ret = Self::new(values);
+        ret.validate().map_err(ServiceError::from)?;
+        Ok(ret)
+    }
 
-        if tags.len() > TAG_VALUE_CAPACITY {
-            return Err("tag array length exceed");
-        }
+    pub fn validate_new_tag_value(values: Vec<TagValue>) -> Result<Self, ServiceError> {
+        let ret = FixedTagList(values);
+        ret.validate().map_err(ServiceError::from)?;
+        Ok(ret)
+    }
+}
 
+impl ValidateBase for FixedTagList {
+    fn validate(&self) -> Result<(), ExpressionError> {
+        let values = self
+            .0
+            .iter()
+            .map(|tag_value| tag_value.0.clone())
+            .collect::<Vec<_>>();
+        validate_tag_values_update(values)?;
         Ok(())
-    }
-}
-
-impl FixedCodec for FixedTagList {
-    fn encode_fixed(&self) -> ProtocolResult<Bytes> {
-        self.0.encode_fixed()
-    }
-
-    fn decode_fixed(bytes: Bytes) -> ProtocolResult<Self> {
-        let tags = NoneEmptyVec::decode_fixed(bytes)?;
-
-        FixedTagList::validate(&tags)
-            .map_err(rlp::DecoderError::Custom)
-            .map_err(FixedCodecError::from)?;
-
-        Ok(FixedTagList(tags))
-    }
-}
-
-impl<'de> Deserialize<'de> for FixedTagList {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct TagVisitor;
-
-        impl<'de> Visitor<'de> for TagVisitor {
-            type Value = FixedTagList;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("tag array")
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-            where
-                A: SeqAccess<'de>,
-            {
-                let mut vec = Vec::new();
-
-                while let Some(elem) = seq.next_element::<Option<TagString>>()? {
-                    vec.extend(elem);
-                }
-
-                let tags = FixedTagList::from_vec(vec).map_err(A::Error::custom)?;
-                Ok(tags)
-            }
-        }
-
-        deserializer.deserialize_seq(TagVisitor)
     }
 }
 
@@ -475,7 +439,7 @@ impl Into<Vec<String>> for FixedTagList {
 }
 
 impl Deref for FixedTagList {
-    type Target = NoneEmptyVec<TagString>;
+    type Target = Vec<TagValue>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -490,10 +454,62 @@ impl DerefMut for FixedTagList {
 
 impl IntoIterator for FixedTagList {
     type IntoIter = std::vec::IntoIter<Self::Item>;
-    type Item = TagString;
+    type Item = TagValue;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
+    }
+}
+
+impl FixedCodec for FixedTagList {
+    fn encode_fixed(&self) -> ProtocolResult<Bytes> {
+        Ok(rlp::encode_list(self).into())
+    }
+
+    fn decode_fixed(bytes: Bytes) -> ProtocolResult<Self> {
+        let rlp = rlp::Rlp::new(&bytes);
+        let tag_values = rlp.as_list().map_err(FixedCodecError::from)?;
+
+        let ret = FixedTagList::new(tag_values);
+        ret.validate()
+            .map_err(|e| rlp::DecoderError::Custom(e.as_str()))
+            .map_err(FixedCodecError::from)?;
+
+        Ok(ret)
+    }
+}
+
+impl<'de> Deserialize<'de> for FixedTagList {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct TagValuesVisitor;
+
+        impl<'de> Visitor<'de> for TagValuesVisitor {
+            type Value = FixedTagList;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("FixedTagList serialization fails")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut vec = Vec::new();
+
+                while let Some(elem) = seq.next_element::<Option<TagValue>>()? {
+                    vec.extend(elem.map(|tag_value| tag_value.0));
+                }
+
+                let ret = FixedTagList::new(vec);
+                ret.validate().map_err(A::Error::custom)?;
+                Ok(ret)
+            }
+        }
+
+        deserializer.deserialize_seq(TagValuesVisitor)
     }
 }
 
@@ -533,7 +549,7 @@ impl Validate for RegisterNewOrg {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NewOrgEvent {
     pub name:           OrgName,
-    pub supported_tags: Vec<TagString>,
+    pub supported_tags: Vec<TagName>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
